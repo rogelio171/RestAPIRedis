@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * @author Roger
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = "app.security.mode=disabled")
 @Import({TestContainersConfig.class, TestSecurityConfig.class})
 @AutoConfigureTestRestTemplate
 class CountryControllerIntegrationTest {
