@@ -1,6 +1,7 @@
 package com.roger.redis.controller;
 
 import com.roger.redis.config.TestContainersConfig;
+import com.roger.redis.config.TestSecurityConfig;
 import com.roger.redis.model.dto.GeoSearchResult;
 import com.roger.redis.model.entity.Country;
 import com.roger.redis.repository.CountryRepository;
@@ -34,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Roger
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Import(TestContainersConfig.class)
+@Import({TestContainersConfig.class, TestSecurityConfig.class})
 @AutoConfigureTestRestTemplate
 class GeoControllerIntegrationTest {
 
