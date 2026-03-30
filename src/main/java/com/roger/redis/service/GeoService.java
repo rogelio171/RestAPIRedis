@@ -15,9 +15,12 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.domain.geo.Metrics;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 
 /**
  * Service class demonstrating Redis Geospatial features using {@link org.springframework.data.redis.core.GeoOperations}.
@@ -59,6 +62,20 @@ public class GeoService {
 
     private static final Logger log = LoggerFactory.getLogger(GeoService.class);
 
+    /**
+     * Redis GEO limits (see GEOADD): latitude must be within roughly
+     * {@code [-85.05112878, 85.05112878]}; longitude {@code [-180, 180]}.
+     */
+    private static boolean isValidRedisGeoCoordinates(double longitude, double latitude) {
+        if (longitude < -180.0 || longitude > 180.0) {
+            return false;
+        }
+        if (latitude < -85.05112878 || latitude > 85.05112878) {
+            return false;
+        }
+        return true;
+    }
+
     /** Redis key for the geospatial index of country centroid locations. */
     private static final String GEO_KEY = "geo:countries";
 
@@ -96,6 +113,12 @@ public class GeoService {
         log.info("Adding geospatial location for country {} ({}) at ({}, {})",
                 countryCode, countryName, longitude, latitude);
 
+        if (!isValidRedisGeoCoordinates(longitude, latitude)) {
+            log.warn("Skipping geo index for {} — invalid coordinates for Redis GEO ({}, {})",
+                    countryCode, longitude, latitude);
+            return;
+        }
+
         redisTemplate.opsForGeo().add(GEO_KEY, new Point(longitude, latitude), countryCode);
         redisTemplate.opsForHash().put(GEO_NAMES_KEY, countryCode, countryName);
 
@@ -114,6 +137,12 @@ public class GeoService {
      */
     public void addCapitalLocation(String countryCode, double longitude, double latitude) {
         log.info("Adding capital location for country {} at ({}, {})", countryCode, longitude, latitude);
+
+        if (!isValidRedisGeoCoordinates(longitude, latitude)) {
+            log.warn("Skipping capital geo index for {} — invalid coordinates for Redis GEO ({}, {})",
+                    countryCode, longitude, latitude);
+            return;
+        }
 
         redisTemplate.opsForGeo().add(GEO_CAPITALS_KEY, new Point(longitude, latitude), countryCode);
 
@@ -157,18 +186,28 @@ public class GeoService {
             return Collections.emptyList();
         }
 
+        List<String> codes = results.getContent().stream()
+                .map(r -> r.getContent().getName().toString())
+                .toList();
+
+        List<Object> names = redisTemplate.opsForHash()
+                .multiGet(GEO_NAMES_KEY, new ArrayList<>(codes));
+
+        Map<String, String> codeToName = new HashMap<>();
+        IntStream.range(0, codes.size()).forEach(i -> {
+            Object name = names.get(i);
+            codeToName.put(codes.get(i), name != null ? name.toString() : codes.get(i));
+        });
+
         List<GeoSearchResult> searchResults = results.getContent().stream()
                 .map(result -> {
                     String countryCode = result.getContent().getName().toString();
                     Point point = result.getContent().getPoint();
                     double distanceKm = result.getDistance().getValue();
 
-                    Object nameObj = redisTemplate.opsForHash().get(GEO_NAMES_KEY, countryCode);
-                    String countryName = nameObj != null ? nameObj.toString() : countryCode;
-
                     return new GeoSearchResult(
                             countryCode,
-                            countryName,
+                            codeToName.getOrDefault(countryCode, countryCode),
                             point.getY(),
                             point.getX(),
                             distanceKm

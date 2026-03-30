@@ -1,6 +1,7 @@
 package com.roger.redis.security;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +26,7 @@ import java.util.List;
  * @author Roger
  */
 @Component
+@ConditionalOnProperty(name = "app.security.mode", havingValue = "jwt")
 public class JwtTokenProvider {
 
     private static final JWSAlgorithm ALGORITHM = JWSAlgorithm.HS256;
@@ -38,6 +40,15 @@ public class JwtTokenProvider {
             @Value("${app.security.jwt.expiration-ms:3600000}") long expirationMs) {
         this.secret = secret;
         this.expirationMs = expirationMs;
+
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "JWT secret is missing. Set the JWT_SECRET environment variable.");
+        }
+        if (secret.length() < 32) {
+            throw new IllegalStateException(
+                    "JWT secret must be at least 32 characters for HS256. Current length: " + secret.length());
+        }
     }
 
     /**
@@ -82,6 +93,10 @@ public class JwtTokenProvider {
     public String getUsernameFromToken(String token) {
         try {
             SignedJWT signedJWT = SignedJWT.parse(token);
+            byte[] secretBytes = secret.getBytes(StandardCharsets.UTF_8);
+            if (!signedJWT.verify(new MACVerifier(secretBytes))) {
+                return null;
+            }
             return signedJWT.getJWTClaimsSet().getSubject();
         } catch (Exception e) {
             return null;

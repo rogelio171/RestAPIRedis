@@ -162,7 +162,7 @@ class CacheControllerIntegrationTest {
      */
     private void warmCache() {
         restTemplate.exchange(
-                "/api/v1/countries",
+                "/api/v1/countries/all",
                 HttpMethod.GET,
                 null,
                 new ParameterizedTypeReference<List<CountryDTO>>() {}

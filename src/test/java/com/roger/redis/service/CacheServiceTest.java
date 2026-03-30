@@ -40,7 +40,7 @@ class CacheServiceTest {
     @DisplayName("getAllCacheKeys — should return keys grouped by cache name")
     void getAllCacheKeys_shouldReturnKeysGroupedByCacheName() {
         when(cacheManager.getCacheNames()).thenReturn(List.of("countries", "countries:byRegion"));
-        when(redisTemplate.execute(any(RedisCallback.class))).thenReturn(Set.of("restapi-redis::countries::key1"));
+        when(redisTemplate.execute(any(RedisCallback.class))).thenReturn(Set.of("restapi-json::countries::key1"));
 
         var result = cacheService.getAllCacheKeys();
 
@@ -52,7 +52,7 @@ class CacheServiceTest {
     @Test
     @DisplayName("getCacheKeysByName — should return set of keys for cache")
     void getCacheKeysByName_shouldReturnSetOfKeys() {
-        var keys = Set.of("restapi-redis::countries::key1", "restapi-redis::countries::key2");
+        var keys = Set.of("restapi-json::countries::key1", "restapi-json::countries::key2");
         when(redisTemplate.execute(any(RedisCallback.class))).thenReturn(keys);
 
         var result = cacheService.getCacheKeysByName("countries");
@@ -74,7 +74,7 @@ class CacheServiceTest {
     @DisplayName("getCacheStats — should return cacheNames, totalKeys, keysByCache, redisInfo")
     void getCacheStats_shouldReturnStatsMap() {
         when(cacheManager.getCacheNames()).thenReturn(List.of("countries"));
-        when(redisTemplate.execute(any(RedisCallback.class))).thenReturn(Set.of("restapi-redis::countries::k1"));
+        when(redisTemplate.execute(any(RedisCallback.class))).thenReturn(Set.of("restapi-json::countries::k1"));
         when(redisTemplate.getConnectionFactory()).thenReturn(null);
 
         var result = cacheService.getCacheStats();

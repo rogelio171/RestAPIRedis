@@ -1,5 +1,7 @@
 package com.roger.redis.service;
 
+import com.roger.redis.config.RedisConfig;
+
 import org.springframework.cache.CacheManager;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.Cursor;
@@ -86,7 +88,7 @@ public class CacheService {
      * Returns all Redis keys belonging to the specified cache.
      *
      * <p>Uses the Redis {@code SCAN} command with a match pattern of
-     * {@code restapi-redis::<cacheName>::*} and a count hint of 100.
+     * {@code restapi-json::<cacheName>::*} and a count hint of 100.
      * The count hint is <em>not</em> a hard limit — Redis may return
      * more or fewer keys per iteration — but it guides the server on
      * how much work to do per call.</p>
@@ -96,7 +98,7 @@ public class CacheService {
      *         if no keys are found
      */
     public Set<String> getCacheKeysByName(String cacheName) {
-        var pattern = "restapi-redis::" + cacheName + "::*";
+        var pattern = RedisConfig.CACHE_KEY_NAMESPACE + cacheName + "::*";
         var scanOptions = ScanOptions.scanOptions()
                 .match(pattern)
                 .count(100)

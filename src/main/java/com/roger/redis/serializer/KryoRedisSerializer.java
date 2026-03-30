@@ -3,6 +3,7 @@ package com.roger.redis.serializer;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import com.esotericsoftware.kryo.util.Pool;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,9 +31,9 @@ import java.util.LinkedHashMap;
  * </ul>
  *
  * <h2>Thread Safety</h2>
- * <p>Kryo instances are <strong>not</strong> thread-safe. This implementation uses a {@link ThreadLocal} to provide
- * each thread with its own pre-configured {@link Kryo} instance, avoiding synchronization overhead while remaining
- * safe in multi-threaded environments such as Spring MVC request processing.</p>
+ * <p>Kryo instances are <strong>not</strong> thread-safe. This implementation uses a {@link Pool} to provide
+ * thread-safe access to a bounded set of pre-configured {@link Kryo} instances, avoiding the ThreadLocal
+ * memory leak risk in container environments with dynamic thread pools.</p>
  *
  * <h2>Class Registration</h2>
  * <p>Common JDK collection types are pre-registered for optimal performance. Unregistered classes are still
@@ -45,29 +46,21 @@ public class KryoRedisSerializer implements RedisSerializer<Object> {
 
     private static final Logger log = LoggerFactory.getLogger(KryoRedisSerializer.class);
 
-    /**
-     * Thread-local Kryo instances, each pre-configured with common class registrations,
-     * reference tracking, and relaxed registration mode.
-     */
-    private static final ThreadLocal<Kryo> KRYO_THREAD_LOCAL = ThreadLocal.withInitial(() -> {
-        Kryo kryo = new Kryo();
-
-        // Allow serialization of classes that are not explicitly registered (just slower).
-        kryo.setRegistrationRequired(false);
-
-        // Enable reference tracking to handle circular references correctly.
-        kryo.setReferences(true);
-
-        // Pre-register common collection and array types for optimal serialization size and speed.
-        kryo.register(ArrayList.class);
-        kryo.register(HashMap.class);
-        kryo.register(LinkedHashMap.class);
-        kryo.register(HashSet.class);
-        kryo.register(Object[].class);
-        kryo.register(byte[].class);
-
-        return kryo;
-    });
+    private static final Pool<Kryo> KRYO_POOL = new Pool<Kryo>(true, false, 16) {
+        @Override
+        protected Kryo create() {
+            Kryo kryo = new Kryo();
+            kryo.setRegistrationRequired(false);
+            kryo.setReferences(true);
+            kryo.register(ArrayList.class);
+            kryo.register(HashMap.class);
+            kryo.register(LinkedHashMap.class);
+            kryo.register(HashSet.class);
+            kryo.register(Object[].class);
+            kryo.register(byte[].class);
+            return kryo;
+        }
+    };
 
     /**
      * Serializes the given object into a byte array using Kryo.
@@ -81,9 +74,8 @@ public class KryoRedisSerializer implements RedisSerializer<Object> {
         if (value == null) {
             return null;
         }
-
+        Kryo kryo = KRYO_POOL.obtain();
         try {
-            Kryo kryo = KRYO_THREAD_LOCAL.get();
             ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
             try (Output output = new Output(baos)) {
                 kryo.writeClassAndObject(output, value);
@@ -93,6 +85,8 @@ public class KryoRedisSerializer implements RedisSerializer<Object> {
             log.error("Failed to serialize object of type [{}]: {}",
                     value.getClass().getName(), e.getMessage());
             throw new SerializationException("Failed to serialize object using Kryo", e);
+        } finally {
+            KRYO_POOL.free(kryo);
         }
     }
 
@@ -108,9 +102,8 @@ public class KryoRedisSerializer implements RedisSerializer<Object> {
         if (bytes == null || bytes.length == 0) {
             return null;
         }
-
+        Kryo kryo = KRYO_POOL.obtain();
         try {
-            Kryo kryo = KRYO_THREAD_LOCAL.get();
             try (Input input = new Input(bytes)) {
                 return kryo.readClassAndObject(input);
             }
@@ -118,6 +111,8 @@ public class KryoRedisSerializer implements RedisSerializer<Object> {
             log.error("Failed to deserialize byte array of length [{}]: {}",
                     bytes.length, e.getMessage());
             throw new SerializationException("Failed to deserialize object using Kryo", e);
+        } finally {
+            KRYO_POOL.free(kryo);
         }
     }
 }

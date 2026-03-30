@@ -11,7 +11,7 @@ A Proof of Concept (PoC) Spring Boot REST API that demonstrates Redis as a cachi
 | Build Tool           | Maven (via Maven Wrapper `./mvnw`)                |
 | Primary Database     | PostgreSQL 17                                     |
 | Cache / Geo Engine   | Redis 8 (via Spring Data Redis)                   |
-| Serialization        | Kryo 5.6.2 (binary serializer for Redis values)   |
+| Serialization        | JSON (Spring Cache values) + Kryo (`RedisTemplate`) |
 | Monitoring           | Spring Boot Actuator                              |
 | Containerization     | Docker Compose (auto-managed by Spring Boot)      |
 | Testing              | JUnit 5, Mockito, Testcontainers 1.21.4           |
@@ -99,7 +99,7 @@ The application uses `@Cacheable` and `@CacheEvict` annotations with per-cache T
 | `countries:search`      | 5 minutes  | Name search results                      |
 | Default                 | 10 minutes | Any other cached data                    |
 
-Values are serialized using **Kryo** (compact binary format) for efficient Redis storage. Keys use the `restapi-redis::` prefix.
+Spring **@Cacheable** values are stored as **JSON** (`GenericJackson2JsonRedisSerializer`) so HTTP responses and Spring DevTools reloads do not hit Kryo/classloader issues. **`RedisTemplate`** still uses **Kryo** for compact binary values where applicable. Cache keys use the `restapi-json-v2::` prefix (see `RedisConfig.CACHE_KEY_NAMESPACE`).
 
 ### Geospatial Operations
 
@@ -168,7 +168,7 @@ src/main/java/com/roger/redis/
 - **Constructor injection** throughout — no field injection
 - **DTO pattern** — entities are never exposed directly in API responses
 - **Cache-aside pattern** — via Spring Cache annotations
-- **Kryo serialization** — thread-local instances for thread safety, pre-registered JDK collection types
+- **Redis serialization** — JSON for Spring Cache entries; Kryo for `RedisTemplate` (thread-local Kryo, pre-registered collection types)
 - **Global exception handling** — structured error responses with status, message, timestamp, and path
 - **Idempotent seeding** — `DataSeeder` skips if the database is already populated
 
@@ -215,7 +215,7 @@ spring.jpa.open-in-view=false
 
 # Redis Caching
 spring.cache.type=redis
-spring.cache.redis.key-prefix=restapi-redis::
+spring.cache.redis.key-prefix=restapi-json-v2::
 spring.cache.redis.use-key-prefix=true
 spring.cache.redis.time-to-live=600000
 

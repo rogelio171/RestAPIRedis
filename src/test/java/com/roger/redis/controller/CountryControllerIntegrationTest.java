@@ -126,6 +126,56 @@ class CountryControllerIntegrationTest {
     }
 
     @Test
+    void getAllCountries_paginatedShouldReturnPageHeaders() {
+        var response = restTemplate.exchange(
+                "/api/v1/countries?page=0&size=2",
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<List<CountryDTO>>() {}
+        );
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).isNotNull().hasSize(2);
+        assertThat(response.getHeaders().getFirst("X-Total-Count")).isEqualTo("4");
+        assertThat(response.getHeaders().getFirst("X-Total-Pages")).isEqualTo("2");
+        assertThat(response.getHeaders().getFirst("X-Current-Page")).isEqualTo("0");
+    }
+
+    @Test
+    void getAllCountriesUnpaginated_shouldReturnAllCountries() {
+        var response = restTemplate.exchange(
+                "/api/v1/countries/all",
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<List<CountryDTO>>() {}
+        );
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).isNotNull().hasSize(4);
+        assertThat(response.getHeaders().get("X-Response-Time-Ms")).isNotNull().isNotEmpty();
+    }
+
+    @Test
+    void getAllCountriesUnpaginated_shouldReturnAllCountriesOnCacheHit() {
+        var firstResponse = restTemplate.exchange(
+                "/api/v1/countries/all",
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<List<CountryDTO>>() {}
+        );
+        var secondResponse = restTemplate.exchange(
+                "/api/v1/countries/all",
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<List<CountryDTO>>() {}
+        );
+
+        assertThat(firstResponse.getStatusCode().value()).isEqualTo(200);
+        assertThat(secondResponse.getStatusCode().value()).isEqualTo(200);
+        assertThat(secondResponse.getBody()).isNotNull().hasSize(4);
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void refresh_shouldEvictCaches() {
         var response = restTemplate.postForEntity(

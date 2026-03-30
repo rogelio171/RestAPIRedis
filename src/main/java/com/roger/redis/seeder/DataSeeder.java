@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Seeds the PostgreSQL database and Redis geospatial index on application startup.
@@ -70,85 +71,144 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     public void run(String... args) {
         if (countryRepository.count() > 0) {
-            log.info("Database already seeded — skipping data import.");
+            log.info("Database already seeded — skipping data import and syncing Redis geo index from PostgreSQL.");
+            syncGeoIndex(countryRepository.findAll());
             return;
         }
 
         try {
             var restClient = restClientBuilder.build();
-
-            log.info("Fetching country data from REST Countries API...");
-            var response = restClient.get()
-                    .uri(API_URL)
-                    .retrieve()
-                    .body(String.class);
+            var response = fetchCountryData(restClient);
 
             var mapper = new JsonMapper();
             var countries = mapper.readTree(response);
 
             var countryList = new ArrayList<Country>();
+            var skippedCountries = 0;
 
             for (var node : countries) {
-                var cca3 = node.path("cca3").asText("");
-                var commonName = node.path("name").path("common").asText("");
-                var officialName = node.path("name").path("official").asText("");
+                try {
+                    var cca3 = node.path("cca3").asText("");
+                    var commonName = node.path("name").path("common").asText("");
+                    var officialName = node.path("name").path("official").asText("");
 
-                var capitalArray = node.path("capital");
-                var capital = (capitalArray.isArray() && !capitalArray.isEmpty())
-                        ? capitalArray.get(0).asText("")
-                        : "";
+                    var capitalArray = node.path("capital");
+                    var capital = (capitalArray.isArray() && !capitalArray.isEmpty())
+                            ? capitalArray.get(0).asText("")
+                            : "";
 
-                var region = node.path("region").asText("");
-                var subregion = node.path("subregion").asText("");
-                var population = node.path("population").asLong(0);
-                var area = node.path("area").asDouble(0.0);
+                    var region = node.path("region").asText("");
+                    var subregion = node.path("subregion").asText("");
+                    var population = node.path("population").asLong(0);
+                    var area = node.path("area").asDouble(0.0);
 
-                var latlng = node.path("latlng");
-                var latitude = (latlng.isArray() && latlng.size() >= 2)
-                        ? latlng.get(0).asDouble(0.0)
-                        : 0.0;
-                var longitude = (latlng.isArray() && latlng.size() >= 2)
-                        ? latlng.get(1).asDouble(0.0)
-                        : 0.0;
+                    var latlng = node.path("latlng");
+                    var latitude = (latlng.isArray() && latlng.size() >= 2)
+                            ? latlng.get(0).asDouble(0.0)
+                            : 0.0;
+                    var longitude = (latlng.isArray() && latlng.size() >= 2)
+                            ? latlng.get(1).asDouble(0.0)
+                            : 0.0;
 
-                var capitalInfoLatlng = node.path("capitalInfo").path("latlng");
-                var capitalLat = (capitalInfoLatlng.isArray() && capitalInfoLatlng.size() >= 2)
-                        ? capitalInfoLatlng.get(0).asDouble(0.0)
-                        : 0.0;
-                var capitalLng = (capitalInfoLatlng.isArray() && capitalInfoLatlng.size() >= 2)
-                        ? capitalInfoLatlng.get(1).asDouble(0.0)
-                        : 0.0;
+                    var capitalInfoLatlng = node.path("capitalInfo").path("latlng");
+                    var capitalLat = (capitalInfoLatlng.isArray() && capitalInfoLatlng.size() >= 2)
+                            ? capitalInfoLatlng.get(0).asDouble(0.0)
+                            : 0.0;
+                    var capitalLng = (capitalInfoLatlng.isArray() && capitalInfoLatlng.size() >= 2)
+                            ? capitalInfoLatlng.get(1).asDouble(0.0)
+                            : 0.0;
 
-                var flagUrl = node.path("flags").path("png").asText("");
-                var flagSvg = node.path("flags").path("svg").asText("");
+                    var flagUrl = node.path("flags").path("png").asText("");
+                    var flagSvg = node.path("flags").path("svg").asText("");
 
-                countryList.add(new Country(
-                        cca3, commonName, officialName, capital,
-                        region, subregion, population, area,
-                        latitude, longitude, capitalLat, capitalLng,
-                        flagUrl, flagSvg
-                ));
+                    countryList.add(new Country(
+                            cca3, commonName, officialName, capital,
+                            region, subregion, population, area,
+                            latitude, longitude, capitalLat, capitalLng,
+                            flagUrl, flagSvg
+                    ));
+                } catch (Exception e) {
+                    skippedCountries++;
+                    var cca3 = node.path("cca3").asText("unknown");
+                    var name = node.path("name").path("common").asText("unknown");
+                    log.warn("Skipped country (cca3={}, name={}): {}", cca3, name, e.getMessage());
+                }
+            }
+
+            if (skippedCountries > 0) {
+                log.warn("Skipped {} countries due to parsing errors", skippedCountries);
             }
 
             var savedCountries = countryRepository.saveAll(countryList);
             log.info("Seeded {} countries into PostgreSQL", savedCountries.size());
 
-            var geoCount = 0;
-            for (var country : savedCountries) {
+            syncGeoIndex(savedCountries);
+
+        } catch (Exception e) {
+            log.error("Failed to seed database: {}", e.getMessage(), e);
+        }
+    }
+
+    private void syncGeoIndex(List<Country> countries) {
+        int geoSuccess = 0;
+        int geoFailures = 0;
+
+        for (var country : countries) {
+            try {
                 geoService.addCountryLocation(country.getCca3(), country.getCommonName(),
                         country.getLongitude(), country.getLatitude());
-                geoCount++;
+                geoSuccess++;
 
                 if (country.getCapitalLat() != 0.0 || country.getCapitalLng() != 0.0) {
                     geoService.addCapitalLocation(country.getCca3(),
                             country.getCapitalLng(), country.getCapitalLat());
                 }
+            } catch (Exception e) {
+                geoFailures++;
+                log.warn("Failed to geo-index country {}: {}", country.getCca3(), e.getMessage());
             }
-
-            log.info("Loaded {} country locations into Redis geo index", geoCount);
-
-        } catch (Exception e) {
-            log.error("Failed to seed database: {}", e.getMessage(), e);
         }
+
+        log.info("Loaded {}/{} country locations into Redis geo index ({} failures)",
+                geoSuccess, countries.size(), geoFailures);
+    }
+
+    /**
+     * Fetches country data from the REST Countries API with retry logic.
+     *
+     * <p>Attempts the HTTP call up to 3 times with exponential backoff
+     * (2s, 4s, 8s) between attempts. If all attempts fail, the last
+     * exception is rethrown wrapped in a {@link RuntimeException}.</p>
+     *
+     * @param restClient the configured {@link RestClient} to use
+     * @return the raw JSON response body
+     * @throws RuntimeException if all retry attempts are exhausted
+     */
+    private String fetchCountryData(RestClient restClient) {
+        int maxAttempts = 3;
+        long[] backoffMs = {2000, 4000, 8000};
+        Exception lastException = null;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                log.info("Fetching country data (attempt {}/{})", attempt, maxAttempts);
+                return restClient.get()
+                        .uri(API_URL)
+                        .retrieve()
+                        .body(String.class);
+            } catch (Exception e) {
+                lastException = e;
+                log.warn("Attempt {}/{} failed: {}", attempt, maxAttempts, e.getMessage());
+                if (attempt < maxAttempts) {
+                    try {
+                        Thread.sleep(backoffMs[attempt - 1]);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Interrupted during retry backoff", ie);
+                    }
+                }
+            }
+        }
+        throw new RuntimeException("Failed to fetch country data after " + maxAttempts + " attempts", lastException);
     }
 }

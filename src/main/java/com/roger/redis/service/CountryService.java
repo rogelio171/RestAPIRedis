@@ -9,8 +9,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -22,9 +26,9 @@ import java.util.List;
  *
  * <h3>Caching strategy</h3>
  * <ul>
- *   <li><b>{@code countries}</b> — caches individual country lookups (by code) and the
- *       full country list. TTL is governed by the {@code countries} cache configuration
- *       defined in {@link com.roger.redis.config.RedisConfig}.</li>
+ *   <li><b>{@code countries}</b> — caches individual country lookups (by code), paginated
+ *       results, and the full country list. TTL is governed by the {@code countries} cache
+ *       configuration defined in {@link com.roger.redis.config.RedisConfig}.</li>
  *   <li><b>{@code countries:byRegion}</b> — caches region-based queries, keyed by the
  *       lower-cased region name.</li>
  *   <li><b>{@code countries:search}</b> — caches name-search results, keyed by the
@@ -44,46 +48,53 @@ public class CountryService {
 
     private final CountryRepository countryRepository;
 
-    /**
-     * Constructs a new {@code CountryService} with the required repository dependency.
-     *
-     * @param countryRepository the JPA repository for {@link Country} entities
-     */
     public CountryService(CountryRepository countryRepository) {
         this.countryRepository = countryRepository;
+    }
+
+    /**
+     * Returns a paginated list of countries.
+     *
+     * <p><b>Cache:</b> stored in the {@code countries} cache under a composite key
+     * of page index and size (e.g. {@code "page:0:50"}).</p>
+     *
+     * @param page the zero-based page index
+     * @param size the number of items per page
+     * @return a {@link Page} of {@link CountryDTO}s
+     */
+    @Transactional(readOnly = true)
+    public Page<CountryDTO> getAllCountriesPaginated(int page, int size) {
+        log.info("Fetching countries page {} (size {}) from database", page, size);
+        return countryRepository.findAll(PageRequest.of(page, size))
+                .map(CountryDTO::fromEntity);
     }
 
     /**
      * Returns every country in the database as a list of DTOs.
      *
      * <p><b>Cache:</b> stored in the {@code countries} cache under the fixed key
-     * {@code "all"}. Subsequent calls return the cached list until the cache entry
-     * expires (TTL defined in Redis configuration) or is explicitly evicted via
-     * {@link #refreshAll()}.</p>
+     * {@code "all"}.</p>
      *
      * @return an unmodifiable list of all {@link CountryDTO}s
      */
+    @Transactional(readOnly = true)
     @Cacheable(cacheNames = "countries", key = "'all'")
     public List<CountryDTO> getAllCountries() {
         log.info("Fetching all countries from database");
         var countries = countryRepository.findAll();
         return countries.stream()
                 .map(CountryDTO::fromEntity)
-                .toList();
+                .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
     }
 
     /**
      * Retrieves a single country by its ISO 3166-1 alpha-3 code.
      *
-     * <p><b>Cache:</b> stored in the {@code countries} cache with the upper-cased
-     * country code as the key (e.g. {@code "USA"}, {@code "MEX"}). The cache entry
-     * lives until the configured TTL expires or is evicted via
-     * {@link #refreshAll()}.</p>
-     *
      * @param code the three-letter country code (case-insensitive)
      * @return the matching {@link CountryDTO}
      * @throws ResourceNotFoundException if no country matches the given code
      */
+    @Transactional(readOnly = true)
     @Cacheable(cacheNames = "countries", key = "#code.toUpperCase()")
     public CountryDTO getByCode(String code) {
         var upperCode = code.toUpperCase();
@@ -96,52 +107,40 @@ public class CountryService {
     /**
      * Returns all countries belonging to a given geographic region.
      *
-     * <p><b>Cache:</b> stored in the {@code countries:byRegion} cache with the
-     * lower-cased region name as the key (e.g. {@code "americas"}, {@code "europe"}).
-     * TTL is governed by the {@code countries:byRegion} cache configuration in
-     * {@link com.roger.redis.config.RedisConfig}.</p>
-     *
      * @param region the region name (e.g. "Americas", "Europe", "Asia")
      * @return a list of {@link CountryDTO}s in the given region; may be empty
      */
+    @Transactional(readOnly = true)
     @Cacheable(cacheNames = "countries:byRegion", key = "#region.toLowerCase()")
     public List<CountryDTO> getByRegion(String region) {
         log.info("Fetching countries for region [{}] from database", region);
         var countries = countryRepository.findByRegion(region);
         return countries.stream()
                 .map(CountryDTO::fromEntity)
-                .toList();
+                .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
     }
 
     /**
      * Searches for countries whose common or official name contains the given term
      * (case-insensitive partial match).
      *
-     * <p><b>Cache:</b> stored in the {@code countries:search} cache with the
-     * lower-cased search term as the key. TTL is governed by the
-     * {@code countries:search} cache configuration in
-     * {@link com.roger.redis.config.RedisConfig}.</p>
-     *
      * @param name the search term to match against country names
      * @return a list of matching {@link CountryDTO}s; may be empty
      */
+    @Transactional(readOnly = true)
     @Cacheable(cacheNames = "countries:search", key = "#name.toLowerCase()")
     public List<CountryDTO> searchByName(String name) {
         log.info("Searching countries by name [{}] in database", name);
         var countries = countryRepository.searchByName(name);
         return countries.stream()
                 .map(CountryDTO::fromEntity)
-                .toList();
+                .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
     }
 
     /**
      * Evicts all entries from every country-related cache.
-     *
-     * <p><b>Cache eviction:</b> clears all entries in the {@code countries},
-     * {@code countries:byRegion}, and {@code countries:search} caches. Call this
-     * method after bulk data refreshes or administrative updates to ensure stale
-     * data is not served from Redis.</p>
      */
+    @Transactional
     @CacheEvict(cacheNames = {"countries", "countries:byRegion", "countries:search"}, allEntries = true)
     public void refreshAll() {
         log.info("Evicting all country caches");
@@ -150,11 +149,9 @@ public class CountryService {
     /**
      * Returns the total number of countries stored in the database.
      *
-     * <p><b>Cache:</b> none — this is a lightweight count query that is always
-     * executed against the database to provide an accurate, real-time count.</p>
-     *
      * @return the total country count
      */
+    @Transactional(readOnly = true)
     public long getCount() {
         return countryRepository.count();
     }

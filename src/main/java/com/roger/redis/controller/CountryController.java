@@ -2,7 +2,9 @@ package com.roger.redis.controller;
 
 import com.roger.redis.model.dto.CountryDTO;
 import com.roger.redis.service.CountryService;
+import com.roger.redis.util.ResponseTimer;
 
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,28 +36,47 @@ public class CountryController {
 
     private final CountryService countryService;
 
-    /**
-     * Constructs a new {@code CountryController} with the required service dependency.
-     *
-     * @param countryService the service that handles country business logic and caching
-     */
     public CountryController(CountryService countryService) {
         this.countryService = countryService;
     }
 
     /**
-     * Returns all countries.
+     * Returns a paginated list of countries.
+     *
+     * <p>Includes {@code X-Response-Time-Ms}, {@code X-Total-Count}, {@code X-Total-Pages},
+     * and {@code X-Current-Page} response headers.</p>
+     *
+     * @param page the zero-based page index (default 0)
+     * @param size the page size (default 50)
+     * @return a {@link ResponseEntity} containing the page of {@link CountryDTO}s
+     */
+    @GetMapping
+    public ResponseEntity<List<CountryDTO>> getAllCountries(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        var timer = ResponseTimer.start();
+        Page<CountryDTO> countryPage = countryService.getAllCountriesPaginated(page, size);
+        return ResponseEntity.ok()
+                .header("X-Response-Time-Ms", timer.elapsedMsString())
+                .header("X-Total-Count", String.valueOf(countryPage.getTotalElements()))
+                .header("X-Total-Pages", String.valueOf(countryPage.getTotalPages()))
+                .header("X-Current-Page", String.valueOf(countryPage.getNumber()))
+                .body(countryPage.getContent());
+    }
+
+    /**
+     * Returns all countries (unpaginated, for backward compatibility).
      *
      * <p>Includes {@code X-Response-Time-Ms} and {@code X-Total-Count} response headers.</p>
      *
      * @return a {@link ResponseEntity} containing the list of all {@link CountryDTO}s
      */
-    @GetMapping
-    public ResponseEntity<List<CountryDTO>> getAllCountries() {
-        var start = System.nanoTime();
+    @GetMapping("/all")
+    public ResponseEntity<List<CountryDTO>> getAllCountriesUnpaginated() {
+        var timer = ResponseTimer.start();
         var countries = countryService.getAllCountries();
         return ResponseEntity.ok()
-                .header("X-Response-Time-Ms", String.valueOf(elapsedMs(start)))
+                .header("X-Response-Time-Ms", timer.elapsedMsString())
                 .header("X-Total-Count", String.valueOf(countries.size()))
                 .body(countries);
     }
@@ -63,34 +84,30 @@ public class CountryController {
     /**
      * Returns a single country identified by its ISO 3166-1 alpha-3 code.
      *
-     * <p>Includes an {@code X-Response-Time-Ms} response header.</p>
-     *
      * @param code the three-letter country code (e.g. "USA", "MEX")
      * @return a {@link ResponseEntity} containing the matching {@link CountryDTO}
      */
     @GetMapping("/{code}")
     public ResponseEntity<CountryDTO> getByCode(@PathVariable String code) {
-        var start = System.nanoTime();
+        var timer = ResponseTimer.start();
         var country = countryService.getByCode(code);
         return ResponseEntity.ok()
-                .header("X-Response-Time-Ms", String.valueOf(elapsedMs(start)))
+                .header("X-Response-Time-Ms", timer.elapsedMsString())
                 .body(country);
     }
 
     /**
      * Returns all countries belonging to the specified geographic region.
      *
-     * <p>Includes {@code X-Response-Time-Ms} and {@code X-Total-Count} response headers.</p>
-     *
      * @param region the region name (e.g. "Americas", "Europe", "Asia")
      * @return a {@link ResponseEntity} containing the list of matching {@link CountryDTO}s
      */
     @GetMapping("/region/{region}")
     public ResponseEntity<List<CountryDTO>> getByRegion(@PathVariable String region) {
-        var start = System.nanoTime();
+        var timer = ResponseTimer.start();
         var countries = countryService.getByRegion(region);
         return ResponseEntity.ok()
-                .header("X-Response-Time-Ms", String.valueOf(elapsedMs(start)))
+                .header("X-Response-Time-Ms", timer.elapsedMsString())
                 .header("X-Total-Count", String.valueOf(countries.size()))
                 .body(countries);
     }
@@ -98,26 +115,21 @@ public class CountryController {
     /**
      * Searches for countries whose name contains the given term (case-insensitive).
      *
-     * <p>Includes {@code X-Response-Time-Ms} and {@code X-Total-Count} response headers.</p>
-     *
      * @param name the search term to match against country names
      * @return a {@link ResponseEntity} containing the list of matching {@link CountryDTO}s
      */
     @GetMapping("/search")
     public ResponseEntity<List<CountryDTO>> searchByName(@RequestParam String name) {
-        var start = System.nanoTime();
+        var timer = ResponseTimer.start();
         var countries = countryService.searchByName(name);
         return ResponseEntity.ok()
-                .header("X-Response-Time-Ms", String.valueOf(elapsedMs(start)))
+                .header("X-Response-Time-Ms", timer.elapsedMsString())
                 .header("X-Total-Count", String.valueOf(countries.size()))
                 .body(countries);
     }
 
     /**
      * Evicts all country-related caches.
-     *
-     * <p>Use this endpoint after bulk data changes to ensure stale data is not
-     * served from Redis.</p>
      *
      * @return a {@link ResponseEntity} containing a confirmation message
      */
@@ -136,15 +148,5 @@ public class CountryController {
     public ResponseEntity<Map<String, Long>> getCount() {
         var count = countryService.getCount();
         return ResponseEntity.ok(Map.of("count", count));
-    }
-
-    /**
-     * Calculates the elapsed time in milliseconds from a {@link System#nanoTime()} start value.
-     *
-     * @param startNanos the nanoTime recorded before the operation
-     * @return elapsed time in milliseconds (as a {@code double} for sub-millisecond precision)
-     */
-    private double elapsedMs(long startNanos) {
-        return (System.nanoTime() - startNanos) / 1_000_000.0;
     }
 }

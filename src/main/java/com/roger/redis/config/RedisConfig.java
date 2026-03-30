@@ -9,7 +9,9 @@ import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
+import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import java.time.Duration;
@@ -18,27 +20,33 @@ import java.util.Map;
 /**
  * Redis configuration for caching and manual Redis operations.
  *
- * <p>This configuration class sets up two primary components:</p>
+ * <h2>IMPORTANT: Dual Serialization Strategy</h2>
+ * <p>This class intentionally uses <strong>two different serialization formats</strong>:</p>
  * <ol>
- *   <li>A {@link RedisCacheManager} for Spring's {@code @Cacheable} / {@code @CacheEvict} / {@code @CachePut}
- *       abstraction, using our custom {@link KryoRedisSerializer} for compact, high-performance binary
- *       serialization of cache values.</li>
- *   <li>A {@link RedisTemplate} for manual Redis operations (e.g., geospatial commands, pub/sub, or any
- *       use case not covered by the cache abstraction).</li>
+ *   <li><strong>{@link RedisCacheManager} &rarr; JSON</strong> ({@link GenericJackson2JsonRedisSerializer}) —
+ *       Used by Spring's {@code @Cacheable} / {@code @CacheEvict} / {@code @CachePut} abstraction.
+ *       JSON is required here because Spring Boot DevTools reloads classes with a different classloader,
+ *       causing Kryo deserialization failures ({@code ClassCastException}) for cached DTOs. JSON survives
+ *       classloader changes and is also human-readable in Redis for debugging.</li>
+ *   <li><strong>{@link RedisTemplate} &rarr; Kryo</strong> ({@link KryoRedisSerializer}) —
+ *       Used for manual Redis operations (geospatial commands, hash operations). These are not
+ *       affected by DevTools classloader issues since they go through the template directly, and
+ *       Kryo provides more compact binary representation for non-cache data.</li>
  * </ol>
+ * <p><strong>Do not unify these into a single serializer</strong> without understanding the
+ * DevTools classloader implications. Removing JSON from the cache manager will cause runtime
+ * failures during development.</p>
  *
- * <h2>Key Design Decisions</h2>
+ * <h2>Other Design Decisions</h2>
  * <ul>
- *   <li><strong>Kryo for values</strong> — provides significantly smaller payloads and faster
- *       serialization/deserialization compared to JSON or JDK serialization.</li>
- *   <li><strong>StringRedisSerializer for keys</strong> — keeps keys human-readable in Redis,
- *       simplifying debugging and monitoring.</li>
- *   <li><strong>Namespace prefix ({@code restapi-redis::})</strong> — isolates this application's
+ *   <li><strong>StringRedisSerializer for keys</strong> — keeps keys human-readable in Redis.</li>
+ *   <li><strong>Namespace prefix ({@link #CACHE_KEY_NAMESPACE})</strong> — isolates this application's
  *       cache entries from other applications sharing the same Redis instance.</li>
  *   <li><strong>Per-cache TTL overrides</strong> — different caches have different invalidation
  *       requirements based on how frequently their data changes.</li>
  * </ul>
  *
+ * @see GenericJackson2JsonRedisSerializer
  * @see KryoRedisSerializer
  * @see RedisCacheManager
  * @see RedisTemplate
@@ -47,15 +55,21 @@ import java.util.Map;
 public class RedisConfig {
 
     /**
+     * Prefix for Spring Cache keys in Redis. Bumped when the value serialization format changes
+     * (e.g. Kryo to JSON) so stale binary entries are not read.
+     */
+    public static final String CACHE_KEY_NAMESPACE = "restapi-json-v3::";
+
+    /**
      * Configures and returns the {@link RedisCacheManager} used by Spring's caching abstraction.
      *
      * <p>The default cache configuration applies to all caches unless overridden:</p>
      * <ul>
      *   <li>Keys are serialized with {@link StringRedisSerializer} for readability.</li>
-     *   <li>Values are serialized with {@link KryoRedisSerializer} for performance and compactness.</li>
+     *   <li>Values are serialized with {@link GenericJackson2JsonRedisSerializer} (JSON with default typing).</li>
      *   <li>Default TTL is 10 minutes to prevent stale data from accumulating.</li>
      *   <li>Null values are not cached to avoid storing meaningless entries.</li>
-     *   <li>All keys are prefixed with {@code restapi-redis::} for namespace isolation.</li>
+     *   <li>All keys are prefixed with {@link #CACHE_KEY_NAMESPACE} for namespace isolation.</li>
      * </ul>
      *
      * <p>Per-cache TTL overrides are applied for domain-specific caches:</p>
@@ -70,16 +84,16 @@ public class RedisConfig {
      */
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
-        var kryoSerializer = new KryoRedisSerializer();
+        RedisSerializer<Object> jsonValueSerializer = new GenericJackson2JsonRedisSerializer();
 
         var defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofMinutes(10))
-                .computePrefixWith(CacheKeyPrefix.prefixed("restapi-redis::"))
+                .computePrefixWith(CacheKeyPrefix.prefixed(CACHE_KEY_NAMESPACE))
                 .disableCachingNullValues()
                 .serializeKeysWith(
                         RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(
-                        RedisSerializationContext.SerializationPair.fromSerializer(kryoSerializer));
+                        RedisSerializationContext.SerializationPair.fromSerializer(jsonValueSerializer));
 
         var perCacheConfigs = Map.of(
                 "countries", defaultConfig.entryTtl(Duration.ofMinutes(30)),

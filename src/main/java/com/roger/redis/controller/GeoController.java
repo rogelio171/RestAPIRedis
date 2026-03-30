@@ -1,7 +1,9 @@
 package com.roger.redis.controller;
 
+import com.roger.redis.exception.ResourceNotFoundException;
 import com.roger.redis.model.dto.GeoSearchResult;
 import com.roger.redis.service.GeoService;
+import com.roger.redis.util.ResponseTimer;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,26 +34,12 @@ public class GeoController {
 
     private final GeoService geoService;
 
-    /**
-     * Constructs a new {@code GeoController} with the given {@link GeoService}.
-     *
-     * @param geoService the geospatial service used to interact with the Redis geo index
-     */
     public GeoController(GeoService geoService) {
         this.geoService = geoService;
     }
 
     /**
      * Finds countries near a given geographic point within a specified radius.
-     *
-     * <p>Delegates to {@link GeoService#findNearbyCountries}, which executes a Redis
-     * {@code GEORADIUS} command. The command searches the geospatial index for members
-     * within the given radius of the provided coordinates, returning results sorted
-     * by ascending distance. Each result includes the member's coordinates and distance
-     * from the search origin.</p>
-     *
-     * <p>The response includes an {@code X-Response-Time-Ms} header indicating the
-     * server-side processing time in milliseconds.</p>
      *
      * @param lat      the latitude of the search origin
      * @param lng      the longitude of the search origin
@@ -66,30 +54,21 @@ public class GeoController {
             @RequestParam(defaultValue = "1000") double radiusKm,
             @RequestParam(defaultValue = "10") int limit) {
 
-        var startNanos = System.nanoTime();
-
+        var timer = ResponseTimer.start();
         var results = geoService.findNearbyCountries(lat, lng, radiusKm, limit);
 
         return ResponseEntity.ok()
-                .header("X-Response-Time-Ms", String.valueOf(elapsedMs(startNanos)))
+                .header("X-Response-Time-Ms", timer.elapsedMsString())
                 .body(results);
     }
 
     /**
      * Calculates the distance between two countries identified by their ISO country codes.
      *
-     * <p>Delegates to {@link GeoService#getDistanceBetween}, which executes a Redis
-     * {@code GEODIST} command. The command computes the great-circle distance between
-     * two members stored in the geospatial index using the Haversine formula, returning
-     * the result in kilometres.</p>
-     *
-     * <p>Returns a {@code 404 Not Found} response if either country code is not present
-     * in the geospatial index.</p>
-     *
      * @param from the ISO 3166-1 alpha-3 code of the origin country
      * @param to   the ISO 3166-1 alpha-3 code of the destination country
-     * @return a {@link ResponseEntity} containing a map with keys {@code "from"}, {@code "to"},
-     *         {@code "distanceKm"}, and {@code "unit"}
+     * @return a {@link ResponseEntity} containing distance information
+     * @throws ResourceNotFoundException if either country code is not in the geo index
      */
     @GetMapping("/distance")
     public ResponseEntity<Map<String, Object>> getDistance(
@@ -99,9 +78,7 @@ public class GeoController {
         var distance = geoService.getDistanceBetween(from, to);
 
         if (distance == null) {
-            return ResponseEntity.notFound()
-                    .header("X-Error", "One or both country codes not found in geo index: " + from + ", " + to)
-                    .build();
+            throw new ResourceNotFoundException("GeoDistance", "countryCodes", from + ", " + to);
         }
 
         var result = Map.<String, Object>of(
@@ -117,14 +94,8 @@ public class GeoController {
     /**
      * Retrieves the stored coordinates of a country from the Redis geospatial index.
      *
-     * <p>Delegates to {@link GeoService#getPosition}, which executes a Redis {@code GEOPOS}
-     * command. The command returns the longitude and latitude associated with the given
-     * member in the geospatial index. A {@link com.roger.redis.exception.ResourceNotFoundException}
-     * is thrown by the service layer if the country code is not found.</p>
-     *
      * @param code the ISO 3166-1 alpha-3 country code
-     * @return a {@link ResponseEntity} containing a map with keys {@code "latitude"} and
-     *         {@code "longitude"}
+     * @return a {@link ResponseEntity} containing latitude and longitude
      */
     @GetMapping("/position/{code}")
     public ResponseEntity<Map<String, Double>> getPosition(@PathVariable String code) {
@@ -135,11 +106,7 @@ public class GeoController {
     /**
      * Returns statistics about the Redis geospatial index.
      *
-     * <p>Delegates to {@link GeoService#getGeoIndexSize}, which executes a Redis {@code ZCARD}
-     * command. Because Redis geospatial indices are stored as sorted sets (ZSETs), {@code ZCARD}
-     * returns the total number of members (countries) indexed.</p>
-     *
-     * @return a {@link ResponseEntity} containing a map with key {@code "countriesIndexed"}
+     * @return a {@link ResponseEntity} containing the number of indexed countries
      */
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getStats() {
@@ -150,15 +117,5 @@ public class GeoController {
         );
 
         return ResponseEntity.ok(stats);
-    }
-
-    /**
-     * Calculates the elapsed time in milliseconds from a starting nanoTime reference.
-     *
-     * @param startNanos the starting point obtained from {@link System#nanoTime()}
-     * @return the elapsed time in milliseconds
-     */
-    private long elapsedMs(long startNanos) {
-        return (System.nanoTime() - startNanos) / 1_000_000;
     }
 }

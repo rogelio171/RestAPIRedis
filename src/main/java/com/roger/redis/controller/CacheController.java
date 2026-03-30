@@ -62,7 +62,7 @@ public class CacheController {
      * Lists all Redis keys belonging to a specific cache.
      *
      * <p>Uses the Redis {@code SCAN} command with a match pattern of
-     * {@code restapi-redis::<cacheName>::*} to find all keys under the
+     * {@code restapi-json::<cacheName>::*} to find all keys under the
      * given cache namespace.</p>
      *
      * @param cacheName the name of the cache whose keys should be listed

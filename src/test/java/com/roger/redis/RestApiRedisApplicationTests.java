@@ -8,7 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-@SpringBootTest
+@SpringBootTest(properties = "app.security.jwt.secret=test-secret-key-with-32-characters")
 @Import(TestContainersConfig.class)
 class RestApiRedisApplicationTests {
 

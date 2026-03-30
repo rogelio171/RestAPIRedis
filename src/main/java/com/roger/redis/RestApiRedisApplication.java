@@ -14,7 +14,7 @@ import org.springframework.cache.annotation.EnableCaching;
 @EnableCaching
 public class RestApiRedisApplication {
 
-	static void main(String[] args) {
+	public static void main(String[] args) {
 		SpringApplication.run(RestApiRedisApplication.class, args);
 	}
 

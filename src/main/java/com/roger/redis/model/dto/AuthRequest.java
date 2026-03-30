@@ -1,5 +1,7 @@
 package com.roger.redis.model.dto;
 
+import jakarta.validation.constraints.NotBlank;
+
 /**
  * Request DTO for login and registration.
  *
@@ -7,5 +9,8 @@ package com.roger.redis.model.dto;
  * @param password the plain-text password
  * @author Roger
  */
-public record AuthRequest(String username, String password) {
+public record AuthRequest(
+        @NotBlank(message = "Username is required") String username,
+        @NotBlank(message = "Password is required") String password
+) {
 }
