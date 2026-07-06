@@ -11,7 +11,7 @@
 | Component          | Technology                          |
 |--------------------|-------------------------------------|
 | Language           | Java 25                             |
-| Framework          | Spring Boot 4.1.0-SNAPSHOT          |
+| Framework          | Spring Boot 4.1.0                    |
 | Build Tool         | Maven (with Maven Wrapper `./mvnw`) |
 | Cache / Data Store | Redis (via Spring Data Redis)       |
 | Web Layer          | Spring Web MVC                      |
@@ -26,6 +26,7 @@
 
 ```
 RestAPIRedis/
+├── .devcontainer/devcontainer.json        # Dev Container (Java 25 + Docker-in-Docker)
 ├── compose.yaml                           # Docker Compose for Redis
 ├── pom.xml                                # Maven build configuration
 ├── mvnw / mvnw.cmd                        # Maven Wrapper scripts

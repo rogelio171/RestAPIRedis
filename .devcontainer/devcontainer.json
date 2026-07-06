@@ -1,0 +1,29 @@
+{
+	"name": "RestAPIRedis",
+	"image": "mcr.microsoft.com/devcontainers/java:25-bookworm",
+	"features": {
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {
+			"version": "latest"
+		}
+	},
+	"forwardPorts": [8080, 5432, 6379],
+	"portsAttributes": {
+		"8080": { "label": "RestAPIRedis app" },
+		"5432": { "label": "PostgreSQL (Testcontainers/Docker Compose)" },
+		"6379": { "label": "Redis (Testcontainers/Docker Compose)" }
+	},
+	"postCreateCommand": "./mvnw -q -DskipTests dependency:go-offline",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"vscjava.vscode-java-pack",
+				"vmware.vscode-spring-boot",
+				"vscjava.vscode-maven"
+			],
+			"settings": {
+				"java.configuration.updateBuildConfiguration": "automatic"
+			}
+		}
+	},
+	"remoteUser": "vscode"
+}

@@ -7,7 +7,7 @@ A Proof of Concept (PoC) Spring Boot REST API that demonstrates Redis as a cachi
 | Component            | Technology                                        |
 |----------------------|---------------------------------------------------|
 | Language             | Java 25                                           |
-| Framework            | Spring Boot 4.1.0-SNAPSHOT                        |
+| Framework            | Spring Boot 4.1.0                        |
 | Build Tool           | Maven (via Maven Wrapper `./mvnw`)                |
 | Primary Database     | PostgreSQL 17                                     |
 | Cache / Geo Engine   | Redis 8 (via Spring Data Redis)                   |
@@ -20,6 +20,8 @@ A Proof of Concept (PoC) Spring Boot REST API that demonstrates Redis as a cachi
 
 - **Java 25** — ensure `JAVA_HOME` is set
 - **Docker** — required for Redis and PostgreSQL containers
+
+> **Dev Container:** A ready-to-use [Dev Container](.devcontainer/devcontainer.json) is provided (Java 25 + Docker-in-Docker) so VS Code / GitHub Codespaces users get a working Maven, Docker, and Testcontainers setup with no local install. Open the repo and choose "Reopen in Container".
 
 ## Quick Start
 
@@ -255,14 +257,14 @@ Integration tests run against real PostgreSQL and Redis instances via [Testconta
 
 | Dependency                           | Version            | Purpose                                    |
 |--------------------------------------|--------------------|--------------------------------------------|
-| `spring-boot-starter-webmvc`        | 4.1.0-SNAPSHOT     | REST API with Spring MVC                   |
-| `spring-boot-starter-data-jpa`      | 4.1.0-SNAPSHOT     | JPA / Hibernate for PostgreSQL             |
-| `spring-boot-starter-data-redis`    | 4.1.0-SNAPSHOT     | Redis data access and caching              |
-| `spring-boot-starter-restclient`    | 4.1.0-SNAPSHOT     | REST client for external API calls         |
-| `spring-boot-starter-json`          | 4.1.0-SNAPSHOT     | Jackson JSON serialization (Jackson 3.x)   |
-| `spring-boot-starter-actuator`      | 4.1.0-SNAPSHOT     | Health checks, metrics, monitoring         |
-| `spring-boot-devtools`              | 4.1.0-SNAPSHOT     | Hot reload and dev-time conveniences       |
-| `spring-boot-docker-compose`        | 4.1.0-SNAPSHOT     | Auto-manage Docker Compose on startup      |
+| `spring-boot-starter-webmvc`        | 4.1.0     | REST API with Spring MVC                   |
+| `spring-boot-starter-data-jpa`      | 4.1.0     | JPA / Hibernate for PostgreSQL             |
+| `spring-boot-starter-data-redis`    | 4.1.0     | Redis data access and caching              |
+| `spring-boot-starter-restclient`    | 4.1.0     | REST client for external API calls         |
+| `spring-boot-starter-json`          | 4.1.0     | Jackson JSON serialization (Jackson 3.x)   |
+| `spring-boot-starter-actuator`      | 4.1.0     | Health checks, metrics, monitoring         |
+| `spring-boot-devtools`              | 4.1.0     | Hot reload and dev-time conveniences       |
+| `spring-boot-docker-compose`        | 4.1.0     | Auto-manage Docker Compose on startup      |
 | `postgresql`                        | Managed by BOM     | PostgreSQL JDBC driver                     |
 | `kryo`                              | 5.6.2              | Binary serialization for Redis values      |
 
@@ -270,11 +272,11 @@ Integration tests run against real PostgreSQL and Redis instances via [Testconta
 
 | Dependency                           | Version        | Purpose                              |
 |--------------------------------------|----------------|--------------------------------------|
-| `spring-boot-starter-test`          | 4.1.0-SNAPSHOT | JUnit 5, Mockito, AssertJ            |
-| `spring-boot-starter-webmvc-test`   | 4.1.0-SNAPSHOT | MockMvc and web layer testing        |
-| `spring-boot-starter-data-redis-test` | 4.1.0-SNAPSHOT | Redis integration test support     |
-| `spring-boot-starter-actuator-test` | 4.1.0-SNAPSHOT | Actuator endpoint testing            |
-| `spring-boot-testcontainers`        | 4.1.0-SNAPSHOT | Testcontainers Spring Boot support   |
+| `spring-boot-starter-test`          | 4.1.0 | JUnit 5, Mockito, AssertJ            |
+| `spring-boot-starter-webmvc-test`   | 4.1.0 | MockMvc and web layer testing        |
+| `spring-boot-starter-data-redis-test` | 4.1.0 | Redis integration test support     |
+| `spring-boot-starter-actuator-test` | 4.1.0 | Actuator endpoint testing            |
+| `spring-boot-testcontainers`        | 4.1.0 | Testcontainers Spring Boot support   |
 | `testcontainers:junit-jupiter`      | 1.21.4         | JUnit 5 container lifecycle          |
 | `testcontainers:postgresql`         | 1.21.4         | PostgreSQL container for tests       |
 | `testcontainers-redis`              | 2.2.4          | Redis container for tests            |
